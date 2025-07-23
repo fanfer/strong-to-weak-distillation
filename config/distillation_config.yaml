@@ -1,0 +1,95 @@
+# Qwen3 Strong-to-Weak Distillation 配置文件
+
+# 模型配置
+models:
+  teacher_model: "Qwen/Qwen3-235B-A22B"      # 教师模型路径
+  student_model: "Qwen/Qwen3-8B"             # 学生模型路径
+  load_in_4bit: true                         # 启用4bit量化以节省内存
+  torch_dtype: "bfloat16"                    # 模型数据类型
+
+# 数据配置
+data:
+  data_path: "dataset/train-00000-of-00001-cae87f8e074b4b5d.json"  # 训练数据路径
+  max_length: 2048                           # 最大序列长度
+  val_ratio: 0.1                            # 验证集比例
+
+# 非策略蒸馏阶段配置
+non_policy_distillation:
+  # 训练参数
+  num_epochs: 3                              # 训练轮数
+  batch_size: 4                              # 批大小（根据GPU内存调整）
+  gradient_accumulation_steps: 8             # 梯度累积步数
+  learning_rate: 5e-5                        # 学习率
+  weight_decay: 0.01                         # 权重衰减
+  warmup_ratio: 0.1                          # 预热比例
+  max_grad_norm: 1.0                         # 梯度裁剪
+  
+  # 蒸馏参数
+  temperature: 3.0                           # 蒸馏温度
+  alpha: 0.7                                # 蒸馏损失权重
+  beta: 0.3                                 # 原始损失权重
+  
+  # 模式切换参数
+  mode_switch_loss_weight: 0.1               # 模式分类损失权重
+  thinking_weight: 0.6                       # 思考模式权重
+  non_thinking_weight: 0.4                   # 非思考模式权重
+  
+  # 训练控制
+  save_steps: 500                            # 保存间隔
+  eval_steps: 100                            # 验证间隔
+  logging_steps: 50                          # 日志间隔
+  output_dir: "./outputs/non_policy_distillation"  # 输出目录
+
+# 策略训练蒸馏阶段配置
+policy_distillation:
+  # 训练参数
+  num_epochs: 5                              # 训练轮数
+  batch_size: 4                              # 批大小
+  gradient_accumulation_steps: 8             # 梯度累积步数
+  learning_rate: 1e-5                        # 更小的学习率
+  weight_decay: 0.01                         # 权重衰减
+  warmup_ratio: 0.05                         # 更小的预热比例
+  max_grad_norm: 1.0                         # 梯度裁剪
+  
+  # 蒸馏参数
+  temperature: 2.0                           # 策略训练温度（较低）
+  kl_weight: 1.0                            # KL散度权重
+  
+  # 策略训练特定参数
+  thinking_prob: 0.5                         # 思考模式采样概率
+  sequence_length: 512                       # 生成序列最大长度
+  top_k: 50                                 # Top-K采样
+  top_p: 0.9                                # Top-P采样
+  
+  # RL相关参数（预留）
+  use_ppo: false                             # 是否使用PPO
+  ppo_epochs: 4                             # PPO训练轮数
+  clip_ratio: 0.2                          # PPO裁剪比例
+  value_loss_coef: 0.5                      # 价值损失系数
+  entropy_bonus: 0.01                       # 熵奖励
+  
+  # 训练控制
+  save_steps: 200                            # 保存间隔
+  eval_steps: 50                             # 验证间隔
+  logging_steps: 20                          # 日志间隔
+  output_dir: "./outputs/policy_distillation"  # 输出目录
+
+# 训练环境配置
+training:
+  use_wandb: false                           # 是否使用Wandb监控
+  wandb_project: "qwen3-distillation"        # Wandb项目名称
+  random_seed: 42                            # 随机种子
+
+# 高级配置（可选）
+advanced:
+  # 内存优化
+  use_gradient_checkpointing: true           # 梯度检查点
+  dataloader_num_workers: 4                  # 数据加载器工作进程数
+  
+  # 性能优化
+  use_flash_attention: false                 # Flash Attention（需要安装）
+  use_xformers: false                       # xformers优化（需要安装）
+  
+  # 模型并行（多GPU）
+  model_parallel: false                      # 模型并行
+  data_parallel: false                       # 数据并行 

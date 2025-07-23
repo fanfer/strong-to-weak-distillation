@@ -1,0 +1,40 @@
+# Core ML Libraries
+torch>=2.0.0
+transformers>=4.35.0
+accelerate>=0.24.0
+datasets>=2.14.0
+tokenizers>=0.15.0
+
+# Quantization and Optimization
+bitsandbytes>=0.41.0
+optimum>=1.14.0
+
+# Training and Monitoring
+wandb>=0.16.0
+tensorboard>=2.14.0
+tqdm>=4.66.0
+
+# Configuration and Data Handling
+pyyaml>=6.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Logging and Utilities
+loguru>=0.7.0
+
+# Optional: For better performance
+flash-attn>=2.3.0  # 可选：Flash Attention加速
+xformers>=0.0.22  # 可选：内存优化
+
+# Development Tools
+pytest>=7.4.0
+black>=23.0.0
+isort>=5.12.0
+flake8>=6.0.0
+
+# Hugging Face Hub
+huggingface_hub>=0.17.0
+
+# Additional utilities
+psutil>=5.9.0
+GPUtil>=1.4.0 
