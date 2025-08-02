@@ -29,6 +29,7 @@ class InferenceConfig:
     top_p: float = 0.9
     max_tokens: int = 512
     batch_size: int = 32
+    reserved_tokens: int = 512  # 为输出预留的token数
 
 class VLLMInferenceEngine:
     """VLLM推理引擎"""
@@ -76,6 +77,18 @@ class VLLMInferenceEngine:
                 max_tokens=self.config.max_tokens,
             )
             
+            # 初始化tokenizer用于截断
+            try:
+                from transformers import AutoTokenizer
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    self.config.model_name, 
+                    trust_remote_code=True
+                )
+                self.logger.info("Tokenizer loaded for text truncation")
+            except Exception as e:
+                self.logger.warning(f"Failed to load tokenizer: {e}, will use character-based truncation")
+                self.tokenizer = None
+            
             self.logger.info("Model loaded successfully")
             
         except Exception as e:
@@ -84,20 +97,92 @@ class VLLMInferenceEngine:
     
     def format_prompt(self, instruction: str, input_text: str, think: str = "") -> str:
         """格式化提示词"""
-        prompt = f"""请根据以下指令和输入，提供评分和理由。
+        # 构建基础prompt模板
+        base_prompt = f"""请根据以下指令和输入，提供评分和理由。
 
 指令: {instruction}
-输入: {input_text}
+输入: {{input_text}}
 """
         if think:
-            prompt += f"思考过程: {think}\n"
+            base_prompt += f"思考过程: {think}\n"
         
-        prompt += """
+        base_prompt += """
 请以JSON格式回答，包含score (0-9的整数) 和reason (详细理由):
 {"score": 分数, "reason": "理由"}
 """
         
-        return prompt
+        # 计算可用于input的最大token数
+        max_input_tokens = self.config.max_model_len - self.config.reserved_tokens
+        
+        # 截断input_text以适应长度限制
+        truncated_input = self._truncate_input_text(
+            base_prompt, input_text, max_input_tokens
+        )
+        
+        # 生成最终prompt
+        final_prompt = base_prompt.format(input_text=truncated_input)
+        
+        return final_prompt
+    
+    def _truncate_input_text(self, base_prompt: str, input_text: str, max_tokens: int) -> str:
+        """截断输入文本以适应长度限制"""
+        if self.tokenizer is None:
+            # 如果没有tokenizer，使用字符截断作为fallback
+            return self._truncate_by_chars(base_prompt, input_text, max_tokens)
+        
+        try:
+            # 计算基础prompt(不包含input_text)的token数
+            base_prompt_tokens = len(self.tokenizer.encode(base_prompt.format(input_text="")))
+            
+            # 计算input_text可用的最大token数
+            available_tokens = max_tokens - base_prompt_tokens
+            
+            if available_tokens <= 0:
+                self.logger.warning("Base prompt too long, using minimal input")
+                return input_text[:100] + "..."  # 最小输入
+            
+            # 编码input_text
+            input_tokens = self.tokenizer.encode(input_text)
+            
+            # 如果不需要截断，直接返回
+            if len(input_tokens) <= available_tokens:
+                return input_text
+            
+            # 截断并解码
+            truncated_tokens = input_tokens[:available_tokens - 10]  # 预留一些空间
+            truncated_text = self.tokenizer.decode(truncated_tokens, skip_special_tokens=True)
+            
+            # 添加截断标识
+            truncated_text += "\n[注: 输入文本已截断]"
+            
+            self.logger.debug(f"Input truncated from {len(input_tokens)} to {len(truncated_tokens)} tokens")
+            
+            return truncated_text
+            
+        except Exception as e:
+            self.logger.warning(f"Token-based truncation failed: {e}, using character-based fallback")
+            return self._truncate_by_chars(base_prompt, input_text, max_tokens)
+    
+    def _truncate_by_chars(self, base_prompt: str, input_text: str, max_tokens: int) -> str:
+        """基于字符数的截断fallback方法"""
+        # 粗略估算：1个token ≈ 1.5个中文字符或0.75个英文单词
+        estimated_base_chars = len(base_prompt.format(input_text=""))
+        estimated_max_chars = max_tokens * 1.5
+        
+        available_chars = int(estimated_max_chars - estimated_base_chars)
+        
+        if available_chars <= 0:
+            return input_text[:100] + "..."
+        
+        if len(input_text) <= available_chars:
+            return input_text
+        
+        # 截断并添加标识
+        truncated_text = input_text[:available_chars - 20] + "\n[注: 输入文本已截断]"
+        
+        self.logger.debug(f"Input truncated by characters from {len(input_text)} to {len(truncated_text)} chars")
+        
+        return truncated_text
     
     def batch_inference(self, prompts: List[str]) -> List[str]:
         """批量推理"""
